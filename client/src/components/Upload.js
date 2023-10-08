@@ -1,0 +1,194 @@
+import React from "react";
+import styled from "@emotion/styled";
+import { useEffect, useState } from "react";
+import {
+  getStorage,
+  ref,
+  uploadBytesResumable,
+  getDownloadURL,
+} from "firebase/storage";
+import app from "../firebase.js";
+import axios from "axios";
+import { useNavigate } from "react-router-dom";
+
+const Wrapper = styled.div`
+  width: 600px;
+  height: 600px;
+  background-color: white;
+  color: black;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  position: relative;
+`;
+const Close = styled.div`
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  cursor: pointer;
+`;
+const Title = styled.h1`
+  text-align: center;
+`;
+
+const Input = styled.input`
+  border: 1px solid black;
+  color: black;
+  border-radius: 3px;
+  padding-bottom: 15px;
+  background-color: transparent;
+  height: 10px
+  z-index: 999;
+`;
+const Desc = styled.textarea`
+  border: 1px solid black;
+  color: black;
+  border-radius: 3px;
+  padding: 10px;
+  background-color: transparent;
+`;
+const Button = styled.button`
+  border-radius: 3px;
+  border: none;
+  padding: 10px 20px;
+  font-weight: 500;
+  cursor: pointer;
+  background-color: blue;
+  color: white;
+`;
+const Label = styled.label`
+  font-size: 14px;
+`;
+
+const Upload = ({ setOpen }) => {
+  const [img, setImg] = useState(null);
+  const [video, setVideo] = useState(null);
+  const [imgPerc, setImgPerc] = useState(0);
+  const [videoPerc, setVideoPerc] = useState(0);
+  const [inputs, setInputs] = useState("");
+  const [tags, setTags] = useState([]);
+
+  const storage = getStorage(app);
+
+  const handleChange = (e) => {
+    setInputs((prev) => {
+      return { ...prev, [e.target.name]: e.target.value };
+    });
+  };
+
+  const handleTags = (e) => {
+    setTags(e.target.value.split(","));
+  };
+
+  const uplaodFile = (file, urlType) => {
+    if (file) {
+      const storageRef = ref(storage, file.name);
+      const uploadTask = uploadBytesResumable(storageRef, file);
+      uploadTask.on(
+        "state_changed",
+        (snapshot) => {
+          const progress =
+            (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          urlType === "imgUrl"
+            ? setImgPerc(Math.round(progress))
+            : setVideoPerc(Math.round(progress));
+          switch (snapshot.state) {
+            case "paused":
+              console.log("Upload is paused");
+              break;
+            case "running":
+              console.log("Upload is running");
+              break;
+            default:
+              console.log("please upload a file");
+          }
+        },
+        (error) => {},
+        () => {
+          getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
+            setInputs((prev) => {
+              return { ...prev, [urlType]: downloadURL };
+            });
+          });
+        }
+      );
+    }
+  };
+  console.log(videoPerc);
+  console.log(imgPerc);
+
+  useEffect(() => {
+    uplaodFile(video, "videoUrl");
+  }, [video]);
+
+  useEffect(() => {
+    uplaodFile(img, "imgUrl");
+  }, [img]);
+
+  const navigate = useNavigate();
+  const handleUpload = async (e) => {
+    e.preventDefault();
+    const res = await axios.post("/videos", { ...inputs, tags });
+    setOpen(false);
+    res.status === 200 && navigate(`/video/${res.data._id}`);
+  };
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        zIndex: "1",
+        top: "50%",
+        left: "50%",
+        // marginRight: "-50%",
+        transform: " translate(-50%, -50%)",
+      }}
+    >
+      <Wrapper>
+        <Close onClick={() => setOpen(false)}>X</Close>
+        <Title>Upload a New Video</Title>
+        <Label>Video:</Label>
+        {videoPerc > 0 ? (
+          "Uploading:" + videoPerc + "%"
+        ) : (
+          <Input
+            type="file"
+            accept="video/*"
+            onChange={(e) => setVideo(e.target.files[0])}
+          />
+        )}
+        <Input
+          type="text"
+          placeholder="Title"
+          name="title"
+          onChange={handleChange}
+        />
+        <Desc
+          placeholder="Description"
+          name="desc"
+          rows={8}
+          onChange={handleChange}
+        />
+        <Input
+          type="text"
+          placeholder="Separate the tags with commas."
+          onChange={handleTags}
+        />
+        <Label>Image:</Label>
+        {imgPerc > 0 ? (
+          "Uploading:" + imgPerc + "%"
+        ) : (
+          <Input
+            type="file"
+            accept="image/*"
+            onChange={(e) => setImg(e.target.files[0])}
+          />
+        )}
+        <Button onClick={handleUpload}>Upload</Button>
+      </Wrapper>
+    </div>
+  );
+};
+
+export default Upload;
